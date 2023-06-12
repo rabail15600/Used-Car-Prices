@@ -1,0 +1,518 @@
+---
+title: "221030 Homework 8"
+author: "Rabail Adwani"
+date: "2022-10-30"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+# Homework 8
+
+Data description:
+
+A Chinese automobile company, named Geely Auto, is targeting the US market to 
+set up a manufacturing unit and compete with their US and European counterparts. 
+Since the dynamics of the American market can be very different in comparison 
+with the Chinese market, they have contracted with an automobile consulting 
+company to provide insights. Basically, they are looking for the factors that 
+are significant in predicting the price of a car in the US. Therefore, the 
+automobile consulting firm has gathered a large dataset of different types of 
+cars across the American market. The data file carprices.csv has information on 
+205 cars, and p = 24 predictors that may help explain changes in price. 
+
+Source: https://archive.ics.uci.edu/ml/datasets/Automobile
+
+Variable information
+
+1. Car_ID: Unique id of each observation (Integer)
+
+2. Symboling: Its assigned insurance risk rating, A value of +3 indicates that the auto is risky, -3 that it is probably pretty safe (Categorical)
+
+3. carCompany: Name of car company (Categorical)
+
+4. fueltype: Car fuel type i.e gas or diesel (Categorical)
+
+5. aspiration: Aspiration used in a car (Categorical)
+
+6. doornumber: Number of doors in a car (Categorical)
+
+7. carbody: body of car (Categorical)
+
+8. drivewheel: type of drive wheel (Categorical)
+
+9. enginelocation: Location of car engine (Categorical)
+
+10. wheelbase: Wheelbase of car (Numeric)
+
+11.	carlength: Length of car (Numeric)	
+
+12. carwidth: Width of car (Numeric)
+
+13. carheight: height of car (Numeric)
+
+14. curbweight: The weight of a car without occupants or baggage. (Numeric)	
+
+15. enginetype: Type of engine. (Categorical)
+
+16. cylindernumber: cylinder placed in the car (Categorical)
+
+17. enginesize: Size of car (Numeric)
+
+18. fuelsystem: Fuel system of car (Categorical)
+
+19. boreratio: Boreratio of car (Numeric)
+
+20. stroke: Stroke or volume inside the engine (Numeric)
+
+21. compressionratio: compression ratio of car (Numeric)
+
+22. horsepower: Horsepower (Numeric)
+
+23. peakrpm: car peak rpm (Numeric)
+
+24. citympg: Mileage in city (Numeric)
+
+25. highwaympg: Mileage on highway (Numeric)
+
+26. price: Price of car (Numeric)	
+
+
+```{r}
+
+library(caret)
+library(car)
+library(ppcor)
+library(olsrr)
+library(glmnet)
+library(tidyverse)
+library(ggplot2)
+library(RobStatTM)
+library(ppcor)
+library(leaps)
+
+# Reading the data
+setwd("F:/MSDS/Applied Statistics for Data Science")
+carprices <- read.csv("Data/carprices.csv", header=TRUE)
+
+```
+
+Missing values:
+
+There are no missing values in the carprices.csv dataset. Therefore, we can move forward in data preprocessing.
+
+```{r}
+
+# Checking for missing values
+table(is.na(carprices))
+
+```
+
+Encoding the categorical data:
+
+Encoding the categorical data refers to transforming the variables from 
+Characters to Factors. Keeping the variable as character can cause many issues 
+in building a regression model. Below, we have transformed 11 columns to factors.
+
+```{r}
+
+# Encoding the categorical data
+str(carprices)
+cat.cols <- c("symboling", "CarName", "fueltype", "aspiration", "doornumber",
+              "carbody", "drivewheel", "enginelocation", "enginetype",
+              "cylindernumber", "fuelsystem")
+carprices[,cat.cols] <- lapply(carprices[,cat.cols], factor)
+sapply(carprices, class)
+
+```
+
+Log transformation of price (target variable):
+
+We have used log transformation of price as the target variable because price is 
+skewed to the right as evident by the histogram. The transformation helps fix a 
+non-linear relationship between X and Y to make it more linear, which is an 
+important assumption of our multiple linear regression model.
+
+```{r}
+
+# Checking target's (Y) distribution
+hist(carprices$price)
+
+# Transforming the target using log()
+carprices$price <- log(carprices$price)
+hist(carprices$price)
+
+```
+
+MLR fit using all predictor variables:
+
+Looking at the p-values, we can see that some variables are significant in 
+explaining log transformation of price, while others seem to be ineffective. 
+The fitted versus actual plot for the training data shows reasonably good fit, 
+and indicates several outliers. There are a total of 8 outliers whose magnitude 
+of the raw residual is larger than the rest of the cases in the dataset. In the 
+plot 1 of diagnostics (residual vs fitted), the horizontal line shows no 
+distinct patterns which is an indication of linear relationship. In plot 2 
+(Normal Q-Q), the residuals are following the straight dashed line. Therefore, 
+they are normally distributed. However, some points on the tails do not fall on 
+the straight line owing to outliers. In plot 3 (scale-location), a horizontal 
+line with equally spread points is a good indication of homoscedasticity. 
+However, that does not seem to be true because the line has kinks. As for the
+CooksD, we will be addressing it later in the report.
+
+Formulas for MLR:
+
+\begin{eqnarray}
+price_{i}^{\ast }=\beta_0^\ast+\beta_1^\ast symboling_{i}^\ast + \\
+\beta_2^\ast fueltype_{i}^\ast +\beta_3^\ast aspiration_{i}^\ast+ \\
+\beta_4^\ast doornumber_{i}^\ast+\beta_5^\ast carbody_{i}^\ast+ \\
+\beta_6^\ast drivewheel_{i}^\ast+\beta_7^\ast enginelocation_{i}^\ast+ \\
+\beta_8^\ast enginetype_{i}^\ast+\beta_9^\ast cylindernumber_{i}^\ast+ \\
+\beta_{10}^\ast fuelsystem_{i}^\ast+\beta_{11}^\ast wheelbase_{i}^\ast+ \\
+\beta_{12}^\ast carlength_{i}^\ast+\beta_{13}^\ast carwidth_{i}^\ast+ \\
+\beta_{14}^\ast carheight_{i}^\ast+\beta_{15}^\ast curbweight_{i}^\ast+ \\
+\beta_{16}^\ast enginesize_{i}^\ast+\beta_{17}^\ast boreratio_{i}^\ast+ \\
+\beta_{18}^\ast stroke_{i}^\ast+\beta_{19}^\ast compressionratio_{i}^\ast+ \\
+\beta_{20}^\ast horsepower_{i}^\ast+\beta_{21}^\ast peakrpm_{i}^\ast+ \\
+\beta_{22}^\ast citympg_{i}^\ast+\beta_{23}^\ast highwaympg_{i}^\ast+ \\
+\epsilon_i,   \label{csreg1}
+\end{eqnarray}
+
+```{r}
+
+# Making the training and validation split
+train.prop <- 0.8
+set.seed(123457)
+trnset <- sort(sample(1:nrow(carprices), ceiling(nrow(carprices)*train.prop)))
+train.set <- carprices[trnset, ]
+test.set  <- carprices[-trnset, ]
+
+# Standardizing the continuous predictor variables
+contpredcols <- c("wheelbase", "carlength", "carwidth", "carheight",
+                  "curbweight", "enginesize", "boreratio", "stroke",
+                  "compressionratio", "horsepower", "peakrpm", "citympg",
+                  "highwaympg")
+normParam <- preProcess(train.set[,contpredcols],
+                        method = c("center", "scale"))
+data.train <- cbind(train.set[,c("price", "symboling", "fueltype",
+                                 "aspiration", "doornumber", "carbody",
+                                 "drivewheel", "enginelocation", "enginetype",
+                                 "cylindernumber", "fuelsystem")],
+                    predict(normParam, train.set[,contpredcols]))
+data.test <- cbind(test.set[,c("price", "symboling", "fueltype",
+                                 "aspiration", "doornumber", "carbody",
+                                 "drivewheel", "enginelocation", "enginetype",
+                                 "cylindernumber", "fuelsystem")],
+                    predict(normParam, test.set[,contpredcols]))
+
+# Fitting the MLR model
+mod.1 <- lm(price ~., data=data.train)
+summary(mod.1)
+
+# Running diagnostics and looking for outliers (using a cutoff of 2 stdev)
+par(mfrow = c(2,2))
+plot(mod.1)
+plot(data.train$price, predict(mod.1,newdata = data.train), 
+     col=4, cex=0.3, xlab="Actual", ylab="In.sample fits", axes=FALSE)
+extpts <- which(abs(residuals(mod.1)) > 2*sd(residuals(mod.1)))
+text(data.train$price[extpts], 
+     predict(mod.1,newdata = data.train)[extpts],
+     rownames(data.train)[extpts], cex=0.5, col=2)
+axis(1); axis(2); grid(); abline(0,1, col=4, lwd=3)
+extpts
+
+```
+
+High leverage points:
+
+We have identified 11 high leverage points in the training dataset of carprices. 
+A datapoint is considered high leverage when it is far removed from x-bar or it 
+is an outlier in the x space. Alternatively, we can define these points as 
+extreme values which might be particularly high or low for one or more 
+predictors, or may be "unusual" combinations of predictor values.
+
+```{r}
+
+# High leverage points
+n <- nrow(data.train)
+p <- ncol(data.train)-1
+(hilev <- which(influence(mod.1)$hat > max(2*(p+1)/n,0.5)))
+length(hilev)
+
+```
+Influential points:
+
+As for CooksD, the points above the 4/n threshold in the scatter are identified 
+as the influential points which need to be investigated further because they may 
+be negatively affecting the regression model. The CooksD measures how much all 
+of the fitted values in the model change when the ith datapoint is deleted. 
+Below, we have identified 17 points using CooksD that are highly influential. 
+With regards to DFFITS, it indicates the datapoints that are influential in 
+changing the in-sample fits in case of their omission. We identified 18 such 
+points.
+
+```{r}
+
+# Influential points
+(hiCookD <- which(cooks.distance(mod.1) > min(qf(0.95,p,n-p), 4/n)))
+plot(cooks.distance(mod.1))
+abline(h=4/n, lty=2, col="steelblue")
+
+(hiDFFITS <- which(dffits(mod.1) > qt(0.975,n-p-1)*sqrt(p/(n-p))))
+
+```
+
+Detecting multicollinearity using Variance Inflation Factor (VIF):
+
+A VIF greater than 10 indicates multicollinearity. There are 13 variables that
+have VIFs greater than 10. The solution to this problem is to either drop one 
+of these predictor variables from the regression model and fit the model again 
+or move towards ridge regression.
+
+```{r}
+
+# Running a check if multicollineartity exists in fitting an MLR model to the
+# response Y using all the predictors
+contpred.df <- data.train[,contpredcols]
+cor.pred <- cor(contpred.df)
+off.diag <- function(x) x[col(x) > row(x)]
+v <- off.diag(cor.pred)
+table(v >=0.95)
+
+# Removing variables that have alias coefficients
+attributes(alias(mod.1)$Complete)$dimnames[[1]]
+data.train.1 <- subset(data.train, select = -c(cylindernumber, fuelsystem))
+
+# Fit the MLR model again as mod.2
+mod.2 <- lm(price ~., data=data.train.1)
+summary(mod.2)
+
+# Check for multicollinearity in mod.2 using vif
+vif(mod.2)
+
+```
+
+Remedies for Multicollinearity:
+
+There are two solutions to Multicollinearity.
+
+Solution # 1
+Dropping predictors from the model: 
+
+It is not clear how the omission of a variable will affect the estimates
+of the remaining model parameters. We refit the model after excluding one of
+the predictors with the largest VIF. We can repeat this process until we get
+VIFs less than 10 for all the predictors, indicating that the issue of
+multicollinearity has been addressed. Below, we excluded a total of 5 variables
+with high VIFs until we reached a model that is free of multicollinear 
+predictors.
+
+
+```{r}
+
+# Solution # 1 for multicollinearity
+# Fit MLR by omitting some collinear variables
+
+# Drop engine type
+data.train.2 <- subset(data.train.1, select = -c(enginetype))
+mod.dropenginetype <- lm(price ~., data = data.train.2)
+summary(mod.dropenginetype)
+anova(mod.dropenginetype)
+car::vif(mod.dropenginetype)
+
+# Drop fueltype
+data.train.3 <- subset(data.train.2, select = -c(fueltype))
+mod.dropfueltype <- lm(price ~., data = data.train.3)
+summary(mod.dropfueltype)
+anova(mod.dropfueltype)
+car::vif(mod.dropfueltype)
+
+# Drop citympg
+data.train.4 <- subset(data.train.3, select = -c(citympg))
+mod.dropcitympg <- lm(price ~., data = data.train.4)
+summary(mod.dropcitympg)
+anova(mod.dropcitympg)
+car::vif(mod.dropcitympg)
+
+# Drop curbweight
+data.train.5 <- subset(data.train.4, select = -c(curbweight))
+mod.dropcurbweight <- lm(price ~., data = data.train.5)
+summary(mod.dropcurbweight)
+anova(mod.dropcurbweight)
+car::vif(mod.dropcurbweight)
+
+# Drop wheelbase
+data.train.6 <- subset(data.train.5, select = -c(wheelbase))
+mod.dropwheelbase <- lm(price ~., data = data.train.6)
+summary(mod.dropwheelbase)
+anova(mod.dropwheelbase)
+car::vif(mod.dropwheelbase)
+
+# Running diagnostics for mod.dropwheelbase
+par(mfrow=c(2,2))
+plot(mod.dropwheelbase)
+
+```
+
+Solution # 2
+Ridge Regression:
+
+Ridge Regression is used to fit a regression model when multicollinearity is
+present in the data. A centered and scaled MLR model minimizes the sum of 
+squared residuals. Meanwhile, ridge regression seeks to minimize error sum of 
+squares subject to a penalty function denoted by
+
+\begin{eqnarray}
+\lambda \parallel \boldsymbol{
+\beta} \parallel^2].
+\end{eqnarray} 
+
+Looking at the output of ridge regression model, we can see
+that the coefficients are shrunk towards zero but no sparsity has been achieved
+because none of the coefficients becomes exactly zero. It has a r-squared of
+89%, which means that 89% of the variation in price is explained by the 
+predictors.
+
+
+```{r}
+
+# Solution # 2 for multicollinearity
+# Ridge regression
+pred.df <- data.train[,-1]
+pred.mat <- data.matrix(pred.df)
+resp <- data.train$price
+mod.ridge.1 <- glmnet(pred.mat, resp, alpha=0, standardize=FALSE)
+summary(mod.ridge.1)
+cvfit.ridge <- cv.glmnet(pred.mat,resp,alpha=0,
+                         standardize=FALSE, 
+                         type.measure = "mse", nfolds = 10)
+best_lambda <- cvfit.ridge$lambda.min
+best_lambda
+plot(cvfit.ridge)
+best.mod.ridge <- glmnet(pred.mat, resp, alpha=0, standardize=FALSE, lambda=best_lambda)
+coef(best.mod.ridge)
+y_predicted.ridge <- predict(best.mod.ridge, s=best_lambda, newx=pred.mat)
+sst.ridge <- sum((resp - mean(resp))^2)
+sse.ridge <- sum((y_predicted.ridge - resp)^2)
+rsq.ridge <- 1-sse.ridge/sst.ridge
+rsq.ridge
+
+```
+
+Variable selection:
+
+Stepwise Regression:
+
+Stepwise Regression prepares a regression model by entering and removing
+predictor variables in a stepwise manner until there is no statistical valid
+reason to enter or remove anymore. It includes the predictor variables that are
+signficantly related to the target. The selections can be made forward, backward
+or in both directions. We have implemented the third approach below. We see
+that this method selects a model with 14 out of 23 predictors. It means that 14
+out of 23 predictors are significant in explaining the response variable that is
+price.
+
+```{r}
+
+# Conducting Variable Selection
+# Stepwise Regression
+fit.step <- lm(price ~., data = data.train)
+mod.step <- step(fit.step, direction = "both", trace = 0)
+summary(mod.step) # Selects 14 out of 23
+
+```
+
+Regularized Regression:
+
+Lasso Regression:
+
+Lasso Regression is used to fit a regression model when multicollinearity is
+present in the data. It is an acronym for least, absolute shrinkage and
+selection operator, and L1 norm. With the use L1 norm constraint, we force some
+of the regression coefficients to zero inducing sparsity by removing the less
+important predictors from the fitted model. From the output of Lasso Regression,
+We can see that the important variables are non-zero. Also, it has a r-squared
+of 90.3%, which means that 90.3% of the variation in price is explained by the 
+predictors.
+
+```{r}
+
+# Regularized Regression
+# Lasso Regression
+cvfit.lasso <- cv.glmnet(pred.mat, resp,alpha=1, 
+                           standardize=FALSE, type.measure = "mse", nfolds = 10)
+coef(cvfit.lasso)
+plot(cvfit.lasso)
+best_lambda2 <- cvfit.lasso$lambda.min
+best_lambda2
+best.mod.lasso <- glmnet(pred.mat, resp,alpha=1, lambda=best_lambda2,
+                         standardize=FALSE)
+coef(best.mod.lasso)
+y_predicted.lasso <- predict(best.mod.lasso, s=best_lambda2, newx=pred.mat)
+sst.lasso <- sum((resp-mean(resp))^2)
+sse.lasso <- sum((y_predicted.lasso - resp)^2)
+rsq.lasso <- 1-sse.lasso/sst.lasso
+rsq.lasso
+
+```
+
+Elastic net:
+
+Elastic net is a regularized regression approach which is a combination of both
+lasso and ridge regression. The elastic net penalty is a convex combination of 
+both penalizations (L2 and L1). Both ridge and lasso regression contain convex
+optimization problem. However, lasso is not always strictly convex like ridge
+regression. Meanwhile, elastic net is always strictly convex and combines the
+predictive properties of ridge regression with the sparsity properties of lasso.
+From the output of elastic net, We can see that the important variables are
+non-zero. Also, it has a r-squared of 90.2% (slightly lower than lasso), which 
+means that 90.2% of the variation in price is explained by the predictors.
+
+
+```{r}
+
+# Elastic net
+cvfit.enet <- cv.glmnet(pred.mat, resp, alpha = 0.5, 
+                  standardize=FALSE, type.measure = "mse", nfolds = 10)
+coef(cvfit.enet)
+plot(cvfit.enet)
+best_lambda3 <- cvfit.enet$lambda.min
+best_lambda3
+best.mod.enet <- glmnet(pred.mat, resp,alpha=1, lambda=best_lambda3,
+                         standardize=FALSE)
+coef(best.mod.enet)
+y_predicted.enet <- predict(best.mod.enet, s=best_lambda3, newx=pred.mat)
+sst.enet <- sum((resp-mean(resp))^2)
+sse.enet <- sum((y_predicted.enet - resp)^2)
+rsq.enet <- 1-sse.enet/sst.enet
+rsq.enet
+
+(all.coef <- cbind(coef(best.mod.ridge), coef(best.mod.lasso),
+                   coef(best.mod.enet)))
+
+
+```
